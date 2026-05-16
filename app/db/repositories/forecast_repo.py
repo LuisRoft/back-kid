@@ -45,10 +45,14 @@ class ForecastRepo:
             .subquery()
         )
 
-        q = select(RiskForecast).join(
-            subq,
-            (RiskForecast.corridor_id == subq.c.corridor_id)
-            & (RiskForecast.computed_at == subq.c.max_computed_at),
+        q = (
+            select(RiskForecast)
+            .join(
+                subq,
+                (RiskForecast.corridor_id == subq.c.corridor_id)
+                & (RiskForecast.computed_at == subq.c.max_computed_at),
+            )
+            .where(RiskForecast.horizon_hours == horizon_hours)
         )
         if is_demo is not None:
             q = q.where(RiskForecast.is_demo == is_demo)

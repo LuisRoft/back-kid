@@ -1,7 +1,7 @@
 import uuid
-from typing import Literal
+from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
@@ -10,13 +10,17 @@ from app.schemas.forecast import RiskForecastOut
 
 router = APIRouter(prefix="/forecasts", tags=["forecasts"])
 
+_VALID_HORIZONS = {24, 48, 72}
+
 
 @router.get("", response_model=list[RiskForecastOut])
 async def list_latest_forecasts(
-    horizon_hours: Literal[24, 48, 72] = 24,
+    horizon_hours: Annotated[int, Query(description="Forecast horizon in hours: 24, 48, or 72")] = 24,
     is_demo: bool | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    if horizon_hours not in _VALID_HORIZONS:
+        raise HTTPException(status_code=422, detail="horizon_hours must be 24, 48, or 72")
     """Latest risk forecast per corridor for the given horizon."""
     repo = ForecastRepo(db)
     return await repo.list_latest_all(horizon_hours, is_demo=is_demo)
