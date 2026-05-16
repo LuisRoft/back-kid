@@ -31,8 +31,9 @@ archive.zip
 
 .codspeed
 
-
+# ai
 .claude
+.agents
 
 # Environment
 .env
