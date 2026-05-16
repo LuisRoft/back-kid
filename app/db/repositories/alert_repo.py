@@ -31,9 +31,15 @@ class AlertRepo:
         await self.session.flush()
         return alert
 
-    async def deactivate_by_corridor(self, corridor_id: uuid.UUID) -> None:
+    async def deactivate_by_corridor(
+        self, corridor_id: uuid.UUID, *, is_demo: bool = False
+    ) -> None:
         await self.session.execute(
             update(Alert)
-            .where(Alert.corridor_id == corridor_id, Alert.is_active == True)  # noqa: E712
+            .where(
+                Alert.corridor_id == corridor_id,
+                Alert.is_active == True,  # noqa: E712
+                Alert.is_demo == is_demo,
+            )
             .values(is_active=False)
         )

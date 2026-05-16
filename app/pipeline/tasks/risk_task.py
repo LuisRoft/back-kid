@@ -4,7 +4,7 @@ Fetches Open-Meteo precipitation for each non-demo corridor,
 scores landslide probability, stores forecasts, and triggers alerts.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from geoalchemy2.shape import to_shape
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,7 +61,7 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
                     horizon_hours=horizon,
                     probability=prob,
                     computed_at=now,
-                    valid_from=now,
+                    valid_from=now + timedelta(hours=horizon - 24),
                     is_demo=False,
                 )
                 await forecast_repo.insert(forecast)

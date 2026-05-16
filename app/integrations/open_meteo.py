@@ -22,11 +22,14 @@ async def get_precipitation_forecast(lat: float, lon: float) -> dict:
 
 def aggregate_precipitation(forecast: dict) -> tuple[float, float, float]:
     """
-    Sum precipitation over the next 24 / 48 / 72 hours.
-    Returns (mm_24h, mm_48h, mm_72h).
+    Sum precipitation per window (not cumulative).
+    Returns (mm_24h, mm_48h, mm_72h) where each value is the total
+    for that specific 24-hour window, not the running total.
+    Open-Meteo can return None for missing data points — treated as 0.
     """
     hourly = forecast.get("hourly", {}).get("precipitation", [])
-    mm_24 = sum(hourly[:24])
-    mm_48 = sum(hourly[:48])
-    mm_72 = sum(hourly[:72])
+    vals = [v if v is not None else 0.0 for v in hourly]
+    mm_24 = sum(vals[:24])        # hours  0–23
+    mm_48 = sum(vals[24:48])      # hours 24–47
+    mm_72 = sum(vals[48:72])      # hours 48–71
     return mm_24, mm_48, mm_72
