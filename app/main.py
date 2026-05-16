@@ -24,14 +24,13 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # Routers registered here as modules are built
-    # from app.api.v1.router import router as v1_router
-    # app.include_router(v1_router, prefix="/api/v1")
+    from app.api.v1 import router as v1_router
+    app.include_router(v1_router, prefix="/api/v1")
 
     @app.get("/health")
     async def health():
