@@ -8,9 +8,18 @@ from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: scheduler will be registered here once pipeline is built
+    from app.pipeline.scheduler import build_scheduler
+    from app.pipeline.tasks.seed_demo import run_seed_demo
+
+    scheduler = build_scheduler()
+    scheduler.start()
+
+    if settings.DEMO_MODE:
+        await run_seed_demo()
+
     yield
-    # Shutdown
+
+    scheduler.shutdown(wait=False)
 
 
 def create_app() -> FastAPI:
