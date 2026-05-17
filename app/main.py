@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,11 +7,22 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 
+log = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import app.pipeline.processors.susceptibility as susc_mod
     from app.pipeline.scheduler import build_scheduler
     from app.pipeline.tasks.seed_demo import run_seed_demo
+
+    try:
+        raster = await asyncio.to_thread(susc_mod.load_ecuador_raster)
+        susc_mod.init(raster)
+    except FileNotFoundError as exc:
+        log.critical(
+            "Susceptibility raster unavailable — pipeline will run without LHASA weighting: %s", exc
+        )
 
     scheduler = build_scheduler()
     scheduler.start()
