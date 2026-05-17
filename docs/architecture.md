@@ -77,7 +77,7 @@ back-kid/
 │       └── osmnx_client.py         # OSM road network download for Ecuador
 │
 ├── data/
-│   ├── seed/                       # El Niño 2023 historical data (demo mode)
+│   ├── seed/                       # Historical baselines; real corridors resolve through OSRM/OSM
 │   └── cache/                      # Downloaded NetCDF files — gitignored
 │
 ├── migrations/                     # Alembic migration files
@@ -89,7 +89,7 @@ back-kid/
 │   └── conftest.py
 │
 ├── scripts/
-│   ├── seed_historical.py          # Loads El Niño 2023 data into DB for demo mode
+│   ├── seed_historical.py          # Loads monitored corridors and optional 2023 demo forecasts
 │   └── load_osm.py                 # One-time OSM road network load for Ecuador
 │
 ├── .env.example
@@ -163,7 +163,11 @@ OPEN_METEO_URL      — Base URL (https://api.open-meteo.com)
 NASA_LHASA_URL      — LHASA NetCDF download endpoint
 OSRM_URL            — OSRM routing API base URL
 RISK_THRESHOLD      — Probability threshold to generate an alert (default: 0.65)
-DEMO_MODE           — "true" to serve El Niño 2023 seed data alongside live data
+DEMO_MODE           — "true" to serve 2023 historical forecast baselines alongside live data
+SEED_BASELINE_DATA  — "true" to ensure monitored real corridors exist on startup
+RUN_PIPELINE_ON_STARTUP — "true" to compute one live forecast pass on startup
+PIPELINE_INTERVAL_MINUTES — Scheduler cadence for live forecasts (default: 30)
+RISK_SEGMENT_COUNT  — Number of sections sampled per monitored corridor
 ```
 
 ---
@@ -176,6 +180,8 @@ DEMO_MODE           — "true" to serve El Niño 2023 seed data alongside live d
 
 **API versioning from day 1.** All endpoints live under `/api/v1/`. Allows breaking changes without affecting existing clients.
 
-**Pre-computed forecasts.** The API never triggers the pipeline. It only reads pre-computed results from DB. This keeps latency under 100ms regardless of data complexity.
+**Pre-computed forecasts.** Startup can seed monitored corridors and run one live pipeline pass. The API never triggers the pipeline per request; it only reads pre-computed results from DB.
+
+**Risk segments, not full-corridor alerts.** Corridors are the monitored network. The red/orange map layer should come from `risk_segments`, which stores the specific road sections whose sampled precipitation and susceptibility cross the risk thresholds.
 
 **Repository pattern.** Keeps services testable without a DB. Repositories can be mocked independently.

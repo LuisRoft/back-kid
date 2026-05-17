@@ -1,15 +1,19 @@
 """
 GeoJSON endpoints consumed directly by Mapbox GL JS.
 
-  GET /map/corridors       → FeatureCollection of monitored corridors, colored by risk
+  GET /map/corridors       → FeatureCollection of monitored corridors
+  GET /map/risk-segments   → FeatureCollection of at-risk corridor sections
   GET /map/rerouting-plans → FeatureCollection of alternate routes for alerted corridors
 """
-from fastapi import APIRouter, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from geoalchemy2.shape import to_shape
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.repositories import AlertRepo, CorridorRepo, ForecastRepo, ReroutingPlanRepo
+from app.config import settings
+from app.db.repositories import AlertRepo, CorridorRepo, ForecastRepo, ReroutingPlanRepo, RiskSegmentRepo
 from app.dependencies import get_db
 
 router = APIRouter(prefix="/map", tags=["map"])
@@ -36,12 +40,12 @@ def _risk_level(prob: float | None) -> tuple[str, str]:
 
 @router.get("/corridors", summary="Corridors FeatureCollection for Mapbox")
 async def corridors_geojson(
-    is_demo: bool | None = None,
+    is_demo: bool | None = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Returns a GeoJSON FeatureCollection. Each feature is a monitored corridor
-    (LineString) with risk metadata as properties ready for Mapbox paint expressions.
+    (LineString). Use /map/risk-segments for red/orange risk styling.
 
     Use directly with:
         map.addSource('corridors', { type: 'geojson', data: <this endpoint> })
@@ -80,10 +84,13 @@ async def corridors_geojson(
                 "name": corridor.name,
                 "probability": prob,
                 "horizon_hours": horizon,
-                "risk_level": level,       # "none"|"low"|"moderate"|"high"|"critical"
-                "risk_color": color,        # hex — use directly in Mapbox paint
+                "risk_level": "monitored",
+                "risk_color": "#64748b",
+                "peak_risk_level": level,
+                "peak_risk_color": color,
                 "alert_active": cid in alerted_ids,
                 "population_impact": corridor.population_impact,
+                "is_demo": corridor.is_demo,
             },
         })
 
@@ -92,7 +99,7 @@ async def corridors_geojson(
 
 @router.get("/rerouting-plans", summary="Alternate routes FeatureCollection for Mapbox")
 async def rerouting_plans_geojson(
-    is_demo: bool | None = None,
+    is_demo: bool | None = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -129,5 +136,59 @@ async def rerouting_plans_geojson(
                 "via_description": plan.via_description,
             },
         })
+
+    return JSONResponse({"type": "FeatureCollection", "features": features})
+
+
+@router.get("/risk-segments", summary="At-risk corridor sections FeatureCollection for Mapbox")
+async def risk_segments_geojson(
+    min_probability: Annotated[float, Query(ge=0.0, le=1.0)] = settings.RISK_THRESHOLD,
+    is_demo: bool | None = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns only the specific road sections currently carrying risk.
+    Use this layer for red/orange danger styling; keep /map/corridors as the
+    neutral monitored network.
+    """
+    segment_repo = RiskSegmentRepo(db)
+    corridor_repo = CorridorRepo(db)
+
+    segments = await segment_repo.list_active(
+        is_demo=is_demo,
+        min_probability=min_probability,
+    )
+    corridors = {c.id: c for c in await corridor_repo.list_all(is_demo=is_demo)}
+
+    peaks = {}
+    for segment in segments:
+        key = (segment.corridor_id, segment.segment_index)
+        if key not in peaks or segment.probability > peaks[key].probability:
+            peaks[key] = segment
+
+    features = []
+    for segment in peaks.values():
+        corridor = corridors.get(segment.corridor_id)
+        level, color = _risk_level(segment.probability)
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": to_shape(segment.geometry).__geo_interface__,
+                "properties": {
+                    "id": segment.id,
+                    "corridor_id": str(segment.corridor_id),
+                    "corridor_name": corridor.name if corridor else "",
+                    "segment_index": segment.segment_index,
+                    "probability": segment.probability,
+                    "horizon_hours": segment.horizon_hours,
+                    "risk_level": level,
+                    "risk_color": color,
+                    "susceptibility_class": segment.susceptibility_class,
+                    "computed_at": segment.computed_at.isoformat(),
+                    "valid_from": segment.valid_from.isoformat(),
+                    "is_demo": segment.is_demo,
+                },
+            }
+        )
 
     return JSONResponse({"type": "FeatureCollection", "features": features})

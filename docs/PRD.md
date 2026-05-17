@@ -162,6 +162,7 @@ Agente conversacional embebido en la aplicación que permite consultar el estado
 |---|---|
 | `corridors` | Segmentos de carretera de Ecuador con geometría PostGIS e impacto poblacional |
 | `risk_forecasts` | Probabilidad de cierre por corredor × horizonte (24/48/72h) × timestamp |
+| `risk_segments` | Tramos específicos de un corredor con riesgo por horizonte y geometría propia |
 | `municipalities` | Geometría + perfil epidemiológico histórico PAHO |
 | `alerts` | Alertas generadas cuando probability > threshold |
 | `rerouting_plans` | Rutas alternativas pre-computadas por corredor |

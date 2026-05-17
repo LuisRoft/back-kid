@@ -12,7 +12,7 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 @router.get("", response_model=list[AlertWithCorridorOut])
 async def list_active_alerts(
-    is_demo: bool | None = None,
+    is_demo: bool | None = False,
     db: AsyncSession = Depends(get_db),
 ):
     """Active alerts sorted by probability descending, with corridor name and population impact."""

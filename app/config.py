@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Pipeline
     RISK_THRESHOLD: float = 0.65
     DEMO_MODE: bool = False
+    SEED_BASELINE_DATA: bool = True
+    RUN_PIPELINE_ON_STARTUP: bool = True
+    PIPELINE_INTERVAL_MINUTES: int = 30
+    RISK_SEGMENT_COUNT: int = 12
 
     # Ecuador bounding box
     ECUADOR_BBOX_NORTH: float = 2.0

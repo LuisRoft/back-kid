@@ -4,6 +4,7 @@ from app.db.repositories.forecast_repo import ForecastRepo
 from app.db.repositories.municipality_repo import MunicipalityRepo
 from app.db.repositories.pipeline_run_repo import PipelineRunRepo
 from app.db.repositories.rerouting_plan_repo import ReroutingPlanRepo
+from app.db.repositories.risk_segment_repo import RiskSegmentRepo
 
 __all__ = [
     "AlertRepo",
@@ -12,4 +13,5 @@ __all__ = [
     "MunicipalityRepo",
     "PipelineRunRepo",
     "ReroutingPlanRepo",
+    "RiskSegmentRepo",
 ]

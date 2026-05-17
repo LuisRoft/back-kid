@@ -33,17 +33,15 @@ class ForecastRepo:
     ) -> list[RiskForecast]:
         """Latest forecast per corridor for the given horizon."""
         from sqlalchemy import func
-        from sqlalchemy.orm import aliased
+        subq_base = select(
+            RiskForecast.corridor_id,
+            func.max(RiskForecast.computed_at).label("max_computed_at"),
+        ).where(RiskForecast.horizon_hours == horizon_hours)
 
-        subq = (
-            select(
-                RiskForecast.corridor_id,
-                func.max(RiskForecast.computed_at).label("max_computed_at"),
-            )
-            .where(RiskForecast.horizon_hours == horizon_hours)
-            .group_by(RiskForecast.corridor_id)
-            .subquery()
-        )
+        if is_demo is not None:
+            subq_base = subq_base.where(RiskForecast.is_demo == is_demo)
+
+        subq = subq_base.group_by(RiskForecast.corridor_id).subquery()
 
         q = (
             select(RiskForecast)

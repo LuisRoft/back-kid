@@ -16,7 +16,7 @@ _VALID_HORIZONS = {24, 48, 72}
 @router.get("", response_model=list[RiskForecastOut])
 async def list_latest_forecasts(
     horizon_hours: Annotated[int, Query(description="Forecast horizon in hours: 24, 48, or 72")] = 24,
-    is_demo: bool | None = None,
+    is_demo: bool | None = False,
     db: AsyncSession = Depends(get_db),
 ):
     if horizon_hours not in _VALID_HORIZONS:

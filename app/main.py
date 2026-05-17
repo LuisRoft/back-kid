@@ -27,8 +27,16 @@ async def lifespan(app: FastAPI):
     scheduler = build_scheduler()
     scheduler.start()
 
-    if settings.DEMO_MODE:
+    if settings.SEED_BASELINE_DATA or settings.DEMO_MODE:
         await run_seed_demo()
+
+    if settings.RUN_PIPELINE_ON_STARTUP:
+        from app.pipeline.tasks.risk_task import run_risk_pipeline
+
+        try:
+            await run_risk_pipeline()
+        except Exception:
+            log.exception("Initial live risk pipeline failed; scheduled runs will retry")
 
     yield
 

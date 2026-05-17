@@ -4,6 +4,7 @@ from app.models.municipality import Municipality
 from app.models.pipeline_run import PipelineRun
 from app.models.rerouting_plan import ReroutingPlan
 from app.models.risk_forecast import RiskForecast
+from app.models.risk_segment import RiskSegment
 
 __all__ = [
     "Alert",
@@ -12,4 +13,5 @@ __all__ = [
     "PipelineRun",
     "ReroutingPlan",
     "RiskForecast",
+    "RiskSegment",
 ]
