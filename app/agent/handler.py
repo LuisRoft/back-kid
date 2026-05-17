@@ -52,9 +52,10 @@ async def _stream(message: str, session_id: str | None, user: CurrentUser):
 async def get_agent_response(message: str, session_id: str | None = None) -> str:
     """Returns the full agent response as a plain string (no streaming).
     Used by the WhatsApp webhook to get a reply before sending it back.
+    No authenticated user — prompt built with None (anonymous citizen profile).
     """
     options = ClaudeAgentOptions(
-        system_prompt=_SYSTEM_PROMPT,
+        system_prompt=build_system_prompt(None),
         mcp_servers={"hermes": hermes_server},
         allowed_tools=["mcp__hermes__*"],
         tools=[],
