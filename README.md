@@ -64,7 +64,7 @@ app/
 ├── db/               # Session + repositories
 └── integrations/     # Clientes externos
 docs/                 # Documentación completa
-data/seed/            # Datos históricos El Niño 2023 (demo mode)
+data/seed/            # Baselines históricos; corredores reales se resuelven por OSRM/OSM
 migrations/           # Alembic
 scripts/              # One-off scripts (seed, load OSM)
 ```

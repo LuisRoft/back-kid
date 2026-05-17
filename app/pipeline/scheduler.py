@@ -3,6 +3,8 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.config import settings
+
 log = logging.getLogger(__name__)
 
 
@@ -13,12 +15,12 @@ def build_scheduler() -> AsyncIOScheduler:
 
     scheduler.add_job(
         run_risk_pipeline,
-        IntervalTrigger(hours=6),
+        IntervalTrigger(minutes=settings.PIPELINE_INTERVAL_MINUTES),
         id="risk_pipeline",
         replace_existing=True,
         max_instances=1,          # never overlap
         misfire_grace_time=300,   # tolerate up to 5 min delay
     )
 
-    log.info("Scheduler configured — risk_pipeline every 6 h")
+    log.info("Scheduler configured — risk_pipeline every %d min", settings.PIPELINE_INTERVAL_MINUTES)
     return scheduler

@@ -25,6 +25,9 @@ app/api/
 | GET | `/api/v1/dashboard/health` | Salud | Municipios en riesgo con perfil epidemiológico |
 | GET | `/api/v1/alerts` | Todos | Alertas activas en este momento |
 | GET | `/api/v1/alerts/{alert_id}` | Todos | Detalle de una alerta específica |
+| GET | `/api/v1/map/corridors` | Mapa | Red de corredores monitoreados |
+| GET | `/api/v1/map/risk-segments` | Mapa | Tramos específicos en riesgo, filtrables por probabilidad |
+| GET | `/api/v1/map/rerouting-plans` | Mapa | Rutas alternas para corredores con alerta |
 | GET | `/api/v1/pipeline/status` | Interno | Estado de cada tarea del pipeline |
 
 ## Reglas de capa

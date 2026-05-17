@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import httpx
@@ -9,19 +10,33 @@ log = logging.getLogger(__name__)
 
 async def get_precipitation_forecast(lat: float, lon: float) -> dict:
     """Hourly precipitation (mm) for next 72 h at the given point."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(
-            f"{settings.OPEN_METEO_URL}/v1/forecast",
-            params={
-                "latitude": lat,
-                "longitude": lon,
-                "hourly": "precipitation",
-                "forecast_days": 3,
-                "timezone": "America/Guayaquil",
-            },
-        )
-        r.raise_for_status()
-        return r.json()
+    return (await get_precipitation_forecasts([(lat, lon)]))[0]
+
+
+async def get_precipitation_forecasts(points: list[tuple[float, float]]) -> list[dict]:
+    """Hourly precipitation (mm) for next 72 h at one or more points."""
+    params = {
+        "latitude": ",".join(str(lat) for lat, _ in points),
+        "longitude": ",".join(str(lon) for _, lon in points),
+        "hourly": "precipitation",
+        "forecast_days": 3,
+        "timezone": "America/Guayaquil",
+    }
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for attempt in range(3):
+            try:
+                r = await client.get(f"{settings.OPEN_METEO_URL}/v1/forecast", params=params)
+                r.raise_for_status()
+                data = r.json()
+                return data if isinstance(data, list) else [data]
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 429 or attempt == 2:
+                    raise
+                await asyncio.sleep(2.0 * (attempt + 1))
+            except (httpx.TimeoutException, httpx.TransportError):
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(0.5 * (attempt + 1))
 
 
 def aggregate_precipitation(forecast: dict) -> tuple[float, float, float]:

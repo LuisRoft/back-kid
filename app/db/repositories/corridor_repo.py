@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.corridor import Corridor
 
+DEMO_CORRIDOR_PREFIX = "demo-2023:"
+
 
 class CorridorRepo:
     def __init__(self, session: AsyncSession) -> None:
@@ -14,6 +16,8 @@ class CorridorRepo:
         q = select(Corridor)
         if is_demo is not None:
             q = q.where(Corridor.is_demo == is_demo)
+        if is_demo is True:
+            q = q.where(Corridor.osm_id.like(f"{DEMO_CORRIDOR_PREFIX}%"))
         result = await self.session.execute(q)
         return list(result.scalars().all())
 

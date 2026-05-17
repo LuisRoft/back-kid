@@ -12,7 +12,7 @@ router = APIRouter(prefix="/corridors", tags=["corridors"])
 
 @router.get("", response_model=list[CorridorOut])
 async def list_corridors(
-    is_demo: bool | None = None,
+    is_demo: bool | None = False,
     db: AsyncSession = Depends(get_db),
 ):
     repo = CorridorRepo(db)

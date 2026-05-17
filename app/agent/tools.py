@@ -33,11 +33,11 @@ def _severity(probability: float) -> str:
 async def get_active_alerts(args: dict[str, Any]) -> dict[str, Any]:
     try:
         async with AsyncSessionLocal() as session:
-            alerts = await AlertRepo(session).list_active()
+            alerts = await AlertRepo(session).list_active(is_demo=False)
             if not alerts:
                 return {"content": [{"type": "text", "text": "No active alerts at this time."}]}
 
-            corridors = await CorridorRepo(session).list_all()
+            corridors = await CorridorRepo(session).list_all(is_demo=False)
             corridor_map = {c.id: c.name for c in corridors}
 
         lines = [f"**Active alerts ({len(alerts)}):**\n"]
@@ -91,8 +91,11 @@ async def get_corridor_risks(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         async with AsyncSessionLocal() as session:
-            forecasts = await ForecastRepo(session).list_latest_all(horizon_hours=horizon)
-            corridors = {c.id: c for c in await CorridorRepo(session).list_all()}
+            forecasts = await ForecastRepo(session).list_latest_all(
+                horizon_hours=horizon,
+                is_demo=False,
+            )
+            corridors = {c.id: c for c in await CorridorRepo(session).list_all(is_demo=False)}
 
         filtered = sorted(
             [f for f in forecasts if f.probability >= min_prob],
@@ -218,8 +221,8 @@ async def get_health_risk(args: dict[str, Any]) -> dict[str, Any]:
     try:
         async with AsyncSessionLocal() as session:
             municipalities = await MunicipalityRepo(session).list_all()
-            active_alerts = await AlertRepo(session).list_active()
-            corridors = {c.id: c for c in await CorridorRepo(session).list_all()}
+            active_alerts = await AlertRepo(session).list_active(is_demo=False)
+            corridors = {c.id: c for c in await CorridorRepo(session).list_all(is_demo=False)}
 
         at_risk_corridors = {
             a.corridor_id: a.probability
