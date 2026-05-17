@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.agent.handler import router as agent_router
 from app.api.v1.alerts import router as alerts_router
+from app.api.v1.webhooks import router as webhooks_router
 from app.api.v1.corridors import router as corridors_router
 from app.api.v1.forecasts import router as forecasts_router
 from app.api.v1.map import router as map_router
@@ -19,3 +20,4 @@ router.include_router(municipalities_router)
 router.include_router(rerouting_router)
 router.include_router(pipeline_router)
 router.include_router(agent_router)
+router.include_router(webhooks_router)

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # AI Agent (post-MVP)
     ANTHROPIC_API_KEY: str = ""
 
+    # Kapso — WhatsApp chatbot
+    KAPSO_API_KEY: str = ""
+    KAPSO_PHONE_NUMBER_ID: str = ""
+
     @property
     def async_database_url(self) -> str:
         """Ensures the DATABASE_URL uses the asyncpg driver.

@@ -61,6 +61,27 @@ async def _stream(message: str, session_id: str | None):
     yield "data: [DONE]\n\n"
 
 
+async def get_agent_response(message: str, session_id: str | None = None) -> str:
+    """Returns the full agent response as a plain string (no streaming).
+    Used by the WhatsApp webhook to get a reply before sending it back.
+    """
+    options = ClaudeAgentOptions(
+        system_prompt=_SYSTEM_PROMPT,
+        mcp_servers={"hermes": hermes_server},
+        allowed_tools=["mcp__hermes__*"],
+        tools=[],
+        resume=session_id,
+        max_turns=10,
+    )
+    parts: list[str] = []
+    async for msg in query(prompt=message, options=options):
+        if isinstance(msg, AssistantMessage):
+            for block in msg.content:
+                if isinstance(block, TextBlock) and block.text:
+                    parts.append(block.text)
+    return "".join(parts)
+
+
 @router.post("/chat")
 async def chat(request: ChatRequest) -> StreamingResponse:
     return StreamingResponse(
