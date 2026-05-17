@@ -16,6 +16,7 @@ from app.integrations.open_meteo import aggregate_precipitation, get_precipitati
 from app.models.alert import Alert
 from app.models.risk_forecast import RiskForecast
 from app.pipeline.processors.risk_scorer import compute_probabilities
+from app.pipeline.processors.susceptibility import get_susceptibility
 
 log = logging.getLogger(__name__)
 
@@ -51,9 +52,10 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
     for corridor in corridors:
         try:
             centroid = to_shape(corridor.geometry).centroid
+            susc_class = get_susceptibility(centroid.y, centroid.x)
             weather = await get_precipitation_forecast(centroid.y, centroid.x)
             mm_24, mm_48, mm_72 = aggregate_precipitation(weather)
-            probs = compute_probabilities(mm_24, mm_48, mm_72)
+            probs = compute_probabilities(mm_24, mm_48, mm_72, susceptibility_class=susc_class)
 
             for horizon, prob in probs.items():
                 forecast = RiskForecast(
@@ -66,14 +68,15 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
                 )
                 await forecast_repo.insert(forecast)
 
-            # Alert if 24 h horizon breaches threshold
-            if probs[24] >= settings.RISK_THRESHOLD:
-                # Deactivate stale alerts before creating new one
-                await alert_repo.deactivate_by_corridor(corridor.id)
+            # Alert if any horizon breaches threshold — surface the highest-risk one
+            peak_horizon = max(probs, key=probs.__getitem__)
+            peak_prob = probs[peak_horizon]
+            if peak_prob >= settings.RISK_THRESHOLD:
+                await alert_repo.deactivate_by_corridor(corridor.id, is_demo=False)
                 alert = Alert(
                     corridor_id=corridor.id,
-                    probability=probs[24],
-                    horizon_hours=24,
+                    probability=peak_prob,
+                    horizon_hours=peak_horizon,
                     generated_at=now,
                     is_active=True,
                     is_demo=False,

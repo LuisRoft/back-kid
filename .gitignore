@@ -40,8 +40,9 @@ archive.zip
 .env.local
 .env.*.local
 
-# Data cache (NetCDF files — large, regenerable)
+# Data files — large binaries, downloaded separately
 data/cache/
+data/*.tif
 
 # Python
 .venv/

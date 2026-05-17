@@ -1,6 +1,10 @@
+import logging
+
 import httpx
 
 from app.config import settings
+
+log = logging.getLogger(__name__)
 
 
 async def get_precipitation_forecast(lat: float, lon: float) -> dict:
@@ -29,6 +33,9 @@ def aggregate_precipitation(forecast: dict) -> tuple[float, float, float]:
     """
     hourly = forecast.get("hourly", {}).get("precipitation", [])
     vals = [v if v is not None else 0.0 for v in hourly]
+    if len(vals) < 72:
+        log.warning("Open-Meteo returned %d hourly values (expected ≥72) — padding with zeros", len(vals))
+        vals.extend([0.0] * (72 - len(vals)))
     mm_24 = sum(vals[:24])        # hours  0–23
     mm_48 = sum(vals[24:48])      # hours 24–47
     mm_72 = sum(vals[48:72])      # hours 48–71
