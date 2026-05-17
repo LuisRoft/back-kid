@@ -86,6 +86,7 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
                 await alert_repo.insert(alert)
                 alerted += 1
 
+            await segment_repo.deactivate_by_corridor(corridor.id, is_demo=False)
             for result in segment_results:
                 if result["probability"] < 0.20:
                     continue

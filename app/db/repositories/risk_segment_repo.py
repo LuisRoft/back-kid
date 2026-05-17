@@ -16,23 +16,35 @@ class RiskSegmentRepo:
         is_demo: bool | None = None,
         min_probability: float = 0.45,
     ) -> list[RiskSegment]:
+        """Latest active risk segments per corridor at or above min_probability."""
         from sqlalchemy import func
 
-        latest = select(func.max(RiskSegment.computed_at).label("computed_at"))
+        subq_base = select(
+            RiskSegment.corridor_id,
+            func.max(RiskSegment.computed_at).label("max_computed_at"),
+        ).where(RiskSegment.is_active == True)  # noqa: E712
+
         if is_demo is not None:
-            latest = latest.where(RiskSegment.is_demo == is_demo)
-        latest_subq = latest.subquery()
+            subq_base = subq_base.where(RiskSegment.is_demo == is_demo)
+
+        subq = subq_base.group_by(RiskSegment.corridor_id).subquery()
 
         q = (
             select(RiskSegment)
-            .join(latest_subq, RiskSegment.computed_at == latest_subq.c.computed_at)
+            .join(
+                subq,
+                (RiskSegment.corridor_id == subq.c.corridor_id)
+                & (RiskSegment.computed_at == subq.c.max_computed_at),
+            )
             .where(
+                RiskSegment.is_active == True,  # noqa: E712
                 RiskSegment.probability >= min_probability,
             )
             .order_by(RiskSegment.probability.desc(), RiskSegment.computed_at.desc())
         )
         if is_demo is not None:
             q = q.where(RiskSegment.is_demo == is_demo)
+
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
