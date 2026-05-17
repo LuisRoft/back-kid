@@ -53,11 +53,21 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
         return 0, 0
 
     now = datetime.now(timezone.utc)
+    fresh_cutoff = now - timedelta(hours=6)
     processed = 0
     alerted = 0
 
     for corridor in corridors:
         try:
+            latest = await forecast_repo.get_latest_by_corridor(corridor.id, 24)
+            if latest and latest.computed_at >= fresh_cutoff:
+                log.info(
+                    "Corridor %s has fresh forecast from %s — skipping Open-Meteo",
+                    corridor.name, latest.computed_at.isoformat(),
+                )
+                processed += 1
+                continue
+
             segment_results = await _score_corridor_segments(corridor)
             probs = _peak_probabilities(segment_results)
 
