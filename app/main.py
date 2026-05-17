@@ -15,6 +15,7 @@ async def lifespan(app: FastAPI):
     import app.pipeline.processors.susceptibility as susc_mod
     from app.pipeline.scheduler import build_scheduler
     from app.pipeline.tasks.seed_demo import run_seed_demo
+    from app.pipeline.tasks.seed_zones import run_seed_zones
 
     try:
         raster = await asyncio.to_thread(susc_mod.load_ecuador_raster)
@@ -29,14 +30,26 @@ async def lifespan(app: FastAPI):
 
     if settings.SEED_BASELINE_DATA or settings.DEMO_MODE:
         await run_seed_demo()
+        await run_seed_zones()
 
     if settings.RUN_PIPELINE_ON_STARTUP:
+        from app.pipeline.tasks.lhasa_realtime_task import run_lhasa_realtime_task
+        from app.pipeline.tasks.pois_task import run_pois_refresh_task
+        from app.pipeline.tasks.realtime_rain_task import run_realtime_rain_task
         from app.pipeline.tasks.risk_task import run_risk_pipeline
+        from app.pipeline.tasks.zone_risk_task import run_zone_risk_task
 
-        try:
-            await run_risk_pipeline()
-        except Exception:
-            log.exception("Initial live risk pipeline failed; scheduled runs will retry")
+        for task in (
+            run_pois_refresh_task,
+            run_realtime_rain_task,
+            run_risk_pipeline,
+            run_zone_risk_task,
+            run_lhasa_realtime_task,
+        ):
+            try:
+                await task()
+            except Exception:
+                log.exception("Initial %s failed; scheduled runs will retry", task.__name__)
 
     yield
 

@@ -14,7 +14,8 @@ class Settings(BaseSettings):
 
     # External APIs
     OPEN_METEO_URL: str = "https://api.open-meteo.com"
-    OSRM_URL: str = "http://router.project-osrm.org"
+    OSRM_URL: str = "http://router.project-osrm.org"  # used only for one-shot corridor geometry at seed time
+    TAVILY_API_KEY: str = ""
 
     # Pipeline
     RISK_THRESHOLD: float = 0.65
@@ -24,14 +25,27 @@ class Settings(BaseSettings):
     PIPELINE_INTERVAL_MINUTES: int = 30
     RISK_SEGMENT_COUNT: int = 12
 
+    # Realtime / national grid
+    OPEN_METEO_GRID_STEP_DEG: float = 0.25
+    REALTIME_RAIN_INTERVAL_MINUTES: int = 30
+    LHASA_NRT_INTERVAL_MINUTES: int = 60
+    ZONE_RISK_INTERVAL_HOURS: int = 6
+    POIS_REFRESH_INTERVAL_DAYS: int = 7
+
     # Ecuador bounding box
     ECUADOR_BBOX_NORTH: float = 2.0
     ECUADOR_BBOX_SOUTH: float = -5.0
     ECUADOR_BBOX_WEST: float = -81.0
     ECUADOR_BBOX_EAST: float = -75.0
 
-    # AI Agent (post-MVP)
+    # AI Agent
     ANTHROPIC_API_KEY: str = ""
+    AGENT_WEB_SEARCH_MAX_PER_TURN: int = 3
+
+    # Clerk auth
+    CLERK_JWT_ISSUER: str = ""
+    CLERK_JWKS_URL: str = ""
+    CLERK_SECRET_KEY: str = ""
 
     # Kapso — WhatsApp chatbot
     KAPSO_API_KEY: str = ""

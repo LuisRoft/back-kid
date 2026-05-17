@@ -1,40 +1,45 @@
 # PRD — back-kid (Backend)
 
-**Proyecto:** Sistema de alerta temprana para protección de infraestructura crítica  
-**Track:** DEF/ACC — Hackathon Latam  
-**Scope del backend:** API + pipeline de datos satelitales  
+**Proyecto:** Sistema ciudadano de gestión de riesgo catastrófico
+**Track:** DEF/ACC — Hackathon Latam
+**Scope del backend:** API + pipeline de datos satelitales + agente conversacional
 **Arquitectura técnica:** Ver [architecture.md](./architecture.md)
+**Change log del pivote:** Ver [changes/2026-05-17-citizen-pivot.md](./changes/2026-05-17-citizen-pivot.md)
 
 ---
 
 ## 1. Problema
 
-El Fenómeno del Niño genera cascadas de fallas en infraestructura crítica que hoy nadie modela de forma anticipada. Los pronósticos climáticos existen (NOAA, Open-Meteo), pero no hay sistema que conecte esos pronósticos con el impacto concreto en carreteras, logística y salud. Todo es reactivo.
+Eventos catastróficos en Ecuador (deslaves, lluvias extremas, bloqueos viales rurales por lodo) afectan al ciudadano con horas o días de anticipación que hoy no se aprovechan. Existen pronósticos climáticos (NOAA, Open-Meteo) y datos de susceptibilidad de terreno (NASA LHASA), pero ningún sistema responde la pregunta que le importa al ciudadano:
 
-El backend de este sistema es el motor que convierte señales climáticas en inteligencia accionable con 24-72 horas de anticipación.
+> "¿Qué riesgo tengo en mi ubicación y qué hago al respecto?"
+
+Sin esa respuesta accionable, el ciudadano queda reactivo: se entera del bloqueo cuando ya no le entra comida, medicina o transporte. El backend convierte señales climáticas y geofísicas en inteligencia personalizada — riesgo por zona + plan de acción generado por un agente conversacional.
 
 ---
 
 ## 2. Alcance MVP
 
-**País:** Ecuador  
-**Corredores:** Detectados automáticamente por el pipeline (OSM + NASA LHASA)  
-**Cascadas modeladas:** Logística/alimentos · Sistema de salud  
-**Actores:** Gobierno · Logística · Salud (sin roles de auth — selector en frontend)  
-**Auth:** Clerk (manejado en frontend; backend valida JWT si se requiere en el futuro)
+- **Usuario:** ciudadano único (sin actores multi-rol).
+- **País:** Ecuador.
+- **Auth:** Clerk (frontend). Backend verifica JWT en endpoints del agente.
+- **Perfil del ciudadano:** vive en Clerk `unsafeMetadata` (sin tabla `users` en MVP).
+- **Geometría de riesgo:**
+  - Corredores OSM (detección automática, igual que hoy).
+  - **Zonas administrativas** (cantón/parroquia) con score de riesgo agregado.
+- **Cobertura de fenómenos:** deslaves + lluvias extremas + inundaciones inferidas (precipitación acumulada).
 
 ---
 
 ## 3. Modos de operación
 
-El sistema opera en dos modos simultáneos:
-
 | Modo | Descripción |
 |---|---|
-| **Tiempo real** | Pipeline activo conectado a Open-Meteo + NASA LHASA. Forecasts actualizados cada 6h. |
-| **Demo histórico** | Datos del Niño 2023 en Ecuador pre-cargados. Cierres reales documentados disponibles para demostración cuando no hay actividad significativa en tiempo real. |
+| **Forecast** | Pipeline cada 30 min cruza Open-Meteo + NASA LHASA para producir riesgo por corredor y por zona en horizontes 24/48/72h. |
+| **Tiempo real** | Snapshot de lluvia actual sobre grilla nacional (cada 30 min) + eventos LHASA near-real-time (cada hora). |
+| **Demo histórico** | Datos del Niño 2023 en Ecuador pre-cargados. Disponible para demo cuando no hay actividad significativa en tiempo real. |
 
-El frontend puede indicar qué modo mostrar. El backend sirve ambos datasets desde la misma estructura de DB.
+El frontend puede mostrar las capas que decida; el backend sirve los datasets independientes.
 
 ---
 
@@ -42,117 +47,112 @@ El frontend puede indicar qué modo mostrar. El backend sirve ambos datasets des
 
 ### 4.1 Pipeline de ingesta
 
-**F-01 — Ingesta meteorológica (cada 6h)**
-- Consume Open-Meteo API para Ecuador (bbox: lat -5°/2°, lon -81°/-75°)
-- Extrae: precipitación acumulada 24/48/72h, probabilidad de lluvia extrema
-- Guarda en DB como serie temporal por punto de grilla
+**F-01 — Ingesta meteorológica forecast (cada 30 min)**
+Consume Open-Meteo para puntos de corredores activos y para una **grilla nacional de Ecuador** (default 0.25°, ~150 puntos). Extrae precipitación acumulada 24/48/72h y probabilidad de lluvia extrema.
 
-**F-02 — Ingesta LHASA (cada 24h)**
-- Descarga el NetCDF diario de NASA LHASA (landslide hazard nowcast)
-- Recorta al bbox de Ecuador con rasterio
-- Convierte celdas de alta susceptibilidad (> umbral) a geometrías vectoriales
-- Intersecta con red vial OSM para identificar segmentos en riesgo
-- Guarda segmentos de carretera con su probabilidad de cierre en DB
+**F-02 — Ingesta meteorológica realtime (cada 30 min)**
+Consume Open-Meteo `current_weather` sobre la grilla nacional. Guarda muestras de precipitación actual en `realtime_rain_samples`.
 
-**F-03 — Red vial OSM (startup + semanal)**
-- Descarga red vial de Ecuador con osmnx
-- Carga en PostGIS como geometrías de segmento
-- Calcula para cada segmento: population impact (CEPAL), municipios dependientes
+**F-03 — Ingesta LHASA daily (cada 24h)**
+Descarga NetCDF de NASA LHASA, recorta al bbox de Ecuador, convierte a susceptibilidad utilizable por el cómputo de cascada.
 
-**F-04 — Rutas alternativas (tras F-03)**
-- Para cada corredor crítico detectado, consulta OSRM para obtener rutas alternativas
-- Pre-computa y guarda en DB con: distancia adicional, tiempo estimado, geometría
+**F-04 — Ingesta LHASA near-real-time (cada 1h)**
+Eventos LHASA recientes → `realtime_landslide_events`. Si no hay feed NRT, parsea el último NetCDF y diffeа contra la corrida previa.
 
-### 4.2 Modelo de cascada
+**F-05 — Red vial OSM (startup + semanal)**
+Descarga red vial Ecuador con osmnx, carga en PostGIS, calcula impacto poblacional por segmento.
 
-**F-05 — Cascade compute (tras cada ingesta)**
-- Cruza probabilidad de lluvia extrema (F-01) con susceptibilidad de deslave (F-02)
-- Genera `risk_forecast` por corredor × horizonte temporal (24h / 48h / 72h)
-- Si `probability > RISK_THRESHOLD`: genera `alert` y activa paquete de inteligencia para cada actor
+**F-06 — POIs vía Overpass (startup + semanal)**
+Llama Overpass API para Ecuador y upsertea en tabla `pois` los tipos: `hospital`, `clinic`, `pharmacy`, `supermarket`. **Albergues y ayuda humanitaria no se cargan en DB**; los gestiona el agente vía Tavily en demanda.
 
-**F-06 — Perfil epidemiológico**
-- Datos históricos PAHO/SIVIGILA pre-cargados por municipio
-- Para municipios con riesgo de aislamiento vial: adjunta perfil de enfermedades durante El Niño anteriores y recomendación de insumos a pre-posicionar
+### 4.2 Modelo de cascada y zonas
 
-### 4.3 API REST
+**F-07 — Cascade compute por corredor (tras cada ingesta)**
+Cruza precipitación + susceptibilidad por corredor → `risk_forecasts` y `risk_segments` por horizonte 24/48/72h. Si `probability > RISK_THRESHOLD` → genera `alert`.
+
+**F-08 — Cómputo de riesgo por zona administrativa (tras F-07)**
+Agrega precipitación + susceptibilidad por polígono administrativo (cantón/parroquia) → `zone_risk_forecasts`.
+
+### 4.3 Perfil epidemiológico (uso interno del agente)
+
+**F-09 — Contexto histórico de salud**
+Datos PAHO/SIVIGILA pre-cargados por municipio (tabla `municipalities.epi_profile`). **No se mapean en frontend.** Lo usa el agente como contexto adicional cuando el ciudadano pregunta sobre kits, medicinas o riesgos de salud específicos de su zona.
+
+### 4.4 API REST
 
 Base path: `/api/v1`
 
-**F-07 — Dashboard Gobierno**
-```
-GET /api/v1/dashboard/government
-```
-Retorna lista priorizada de corredores en riesgo, ordenados por impacto poblacional. Incluye forecasts 24/48/72h por corredor y municipios que quedarían aislados.
+**Mapa (públicos, sin auth):**
 
-**F-08 — Dashboard Logística**
 ```
-GET /api/v1/dashboard/logistics
-GET /api/v1/dashboard/logistics/{corridor_id}
+GET /map/corridors?bbox=
+GET /map/risk-segments?horizon=24|48|72
+GET /map/zones?bbox=&horizon=24|48|72
+GET /map/rain/realtime?bbox=
+GET /map/rain/forecast?bbox=&horizon=24|48|72
+GET /map/landslides/realtime?bbox=&hours=24
+GET /map/landslides/forecast?bbox=&horizon=24|48|72
+GET /map/pois?bbox=&types=hospital,clinic,pharmacy,supermarket
 ```
-Retorna plan de rerouting por corredor: ruta alternativa con geometría, distancia adicional, tiempo estimado, y forecast de cierre.
 
-**F-09 — Dashboard Salud**
-```
-GET /api/v1/dashboard/health
-```
-Retorna mapa de municipios en riesgo de aislamiento con perfil epidemiológico histórico y recomendación de insumos a pre-posicionar por corredor disponible.
+**Alertas (públicas):**
 
-**F-10 — Alertas activas**
 ```
-GET /api/v1/alerts
-GET /api/v1/alerts/{alert_id}
+GET /alerts
+GET /alerts/corridor/{corridor_id}
 ```
-Lista de alertas generadas actualmente. Cada alerta incluye: corredor afectado, probabilidad, horizonte, y paquetes de inteligencia por actor.
 
-**F-11 — Estado del pipeline**
+**Pipeline (público, debug):**
+
 ```
-GET /api/v1/pipeline/status
+GET /pipeline/runs?limit=50
 ```
-Último run exitoso de cada tarea, próximo run programado. Útil para debugging y transparencia.
+
+**Agente (privado — requiere `Authorization: Bearer <clerk_jwt>`):**
+
+```
+POST /agent/chat
+   body: { message: str, session_id?: str }
+   response: SSE stream { type, text, session_id }
+```
+
+El backend extrae el perfil del ciudadano del JWT (`unsafe_metadata` como custom claim) y lo inyecta como contexto fijo del agente — el frontend no envía el perfil en el body.
+
+### 4.5 Agente conversacional (Claude Agent SDK)
+
+In-process MCP server (`create_sdk_mcp_server("hermes", ...)`) con tools:
+
+| Tool | Función |
+|---|---|
+| `get_my_risk(lat, lon)` | Riesgo de la zona del ciudadano: lluvia 24/48/72h + landslide forecast + eventos reales recientes |
+| `get_realtime_rain(lat, lon, radius_km)` | Muestras de lluvia actual en radio |
+| `get_nearby_pois(lat, lon, types[], k=5)` | POIs cercanos de la tabla `pois` |
+| `web_search(query)` | Tavily Search — para info temporal/no estructurada (albergues, ayuda humanitaria activa, noticias locales). Cuota máx 3 búsquedas por turno |
+| `get_active_alerts()` | Alertas activas (≥ RISK_THRESHOLD) |
+| `get_local_health_context(lat, lon)` | Perfil epidemiológico histórico de municipios cercanos (uso interno del LLM) |
+
+**Sesión:** `resume=session_id` built-in del SDK. Sin persistencia cross-session en MVP.
+
+**Modo:** reactivo. Sin notificaciones push ni planes proactivos.
 
 ---
 
 ## 5. Funcionalidades pendientes (post-MVP)
 
-**P-01 — Government action broadcast**  
-El gobierno puede publicar acciones tomadas (pre-posicionamiento de equipos, cierre de rutas, envío de insumos). Visible para todos los actores como feed en tiempo real. Requiere: `POST /api/v1/actions`, `GET /api/v1/actions/feed`.
+**P-01 — Notificaciones proactivas**
+Cuando el sistema detecta alto riesgo en la zona del ciudadano (forecast + ubicación del perfil), genera y entrega un plan automático. Requiere tabla `users` (persistencia server-side) y un canal de entrega (push, email, webhook).
 
-**P-02 — Seguimiento post-evento**  
-El sistema registra si el cierre predicho efectivamente ocurrió. Compara predicción vs realidad para validar y mejorar el modelo. Requiere: campo `actual_outcome` en `alerts`, job de validación post-evento.
+**P-02 — Seguimiento post-evento**
+Validar si el cierre/deslave predicho efectivamente ocurrió (`actual_outcome` en `alerts`).
 
-**P-03 — Notificaciones push/webhook**  
-Cuando se genera una alerta nueva, notificar a los actores relevantes por webhook o email.
+**P-03 — Government action broadcast**
+Feed público de acciones tomadas por autoridades (pre-posicionamiento, cierres, envío de insumos). Visible para todos los ciudadanos.
 
-**P-04 — Expansión de país**  
-Agregar Colombia. Requiere parametrizar el pipeline por bbox de país y agregar fuentes epidemiológicas de SIVIGILA Colombia.
+**P-04 — Expansión geográfica**
+Colombia, Perú, Bolivia. Parametrizar pipeline por bbox + fuentes epidemiológicas locales.
 
-**P-05 — AI Agent (chatbot conversacional)**  
-Agente conversacional embebido en la aplicación que permite consultar el estado del sistema en lenguaje natural.
-
-*Stack:*
-- **Claude Agent SDK** (`claude-agent-sdk` Python package) — manejo de sesión, tool-calling y loop del agente automático
-- No se usa LangChain ni LangGraph
-- Endpoint: `POST /api/v1/agent/chat` — recibe `{ message, session_id? }`, responde en streaming
-
-*Cómo funciona:*
-- Las tools se definen con `@tool` + `create_sdk_mcp_server` — corren **in-process** dentro de FastAPI, no como subprocess separado
-- Los handlers son funciones async Python que llaman directamente al service/repo layer
-- Sesión manejada con `resume=session_id` built-in del SDK — sin implementar historial manualmente
-- Built-in tools del SDK (Read, Write, Bash) deshabilitados con `tools=[]`
-
-*Definición acordada:*
-- **Memoria:** por sesión via `resume=session_id`. Al cerrar el chat, se descarta. Sin persistencia cross-session.
-- **Acciones:** read-only — el agente solo consulta datos, no modifica estado.
-- **Contexto de actor:** ninguno — agnóstico a quién pregunta, responde con todos los datos disponibles.
-- **Comportamiento:** reactivo — solo responde cuando el usuario pregunta.
-
-*Tools del agente (in-process, llaman directamente al repo layer):*
-- `get_corridor_risks(horizon_hours)` — corredores en riesgo con forecasts 24/48/72h
-- `get_rerouting_plan(corridor_id)` — rutas alternativas para un corredor específico
-- `get_health_risk(min_probability)` — municipios en riesgo de aislamiento con perfil epidemiológico
-- `get_active_alerts()` — alertas activas en este momento
-
-*Ubicación en el proyecto:* `app/agent/` — tool definitions + chat handler (endpoint)
+**P-05 — Cards estructuradas del agente**
+Que las respuestas del agente puedan incluir suggestions estructuradas (ej. "ir a este POI", "abrir capa X en el mapa") consumibles como UI cards en el frontend.
 
 ---
 
@@ -160,39 +160,50 @@ Agente conversacional embebido en la aplicación que permite consultar el estado
 
 | Tabla | Contenido |
 |---|---|
-| `corridors` | Segmentos de carretera de Ecuador con geometría PostGIS e impacto poblacional |
-| `risk_forecasts` | Probabilidad de cierre por corredor × horizonte (24/48/72h) × timestamp |
-| `risk_segments` | Tramos específicos de un corredor con riesgo por horizonte y geometría propia |
-| `municipalities` | Geometría + perfil epidemiológico histórico PAHO |
+| `corridors` | Segmentos de carretera con geometría PostGIS e impacto poblacional |
+| `risk_forecasts` | Probabilidad por corredor × horizonte (24/48/72h) × timestamp |
+| `risk_segments` | Tramos específicos con riesgo + geometría propia |
+| `zones` | Cantones/parroquias de Ecuador (seed INEC) |
+| `zone_risk_forecasts` | Score de riesgo por zona × horizonte |
+| `realtime_rain_samples` | Muestras de lluvia actual por punto de grilla × timestamp |
+| `realtime_landslide_events` | Eventos LHASA NRT |
+| `pois` | Hospitales, clínicas, farmacias, supermercados (fuente OSM Overpass) |
+| `municipalities` | Geometría + perfil epidemiológico histórico (uso interno del agente) |
 | `alerts` | Alertas generadas cuando probability > threshold |
-| `rerouting_plans` | Rutas alternativas pre-computadas por corredor |
-| `pipeline_runs` | Log de ejecución de cada tarea del pipeline |
+| `pipeline_runs` | Log de ejecución de cada tarea |
+
+**Eliminada en el pivote:** `rerouting_plans`.
 
 ---
 
 ## 7. Fuentes de datos
 
-| Dataset | Fuente | Frecuencia de actualización |
+| Dataset | Fuente | Frecuencia |
 |---|---|---|
-| Precipitación forecast | Open-Meteo API | Cada 6h |
-| Landslide hazard | NASA LHASA (NetCDF) | Diaria |
+| Precipitación forecast | Open-Meteo API | 30 min |
+| Precipitación actual | Open-Meteo `current_weather` | 30 min |
+| Landslide susceptibility | NASA LHASA daily NetCDF | 24h |
+| Landslide events NRT | NASA LHASA NRT | 1h |
 | Red vial | OpenStreetMap via osmnx | Startup + semanal |
-| Rutas alternativas | OSRM public API | Pre-computado |
-| Perfil epidemiológico | PAHO / SIVIGILA (CSV) | Pre-cargado (histórico) |
+| POIs (hospitales, farmacias, supermercados) | OSM Overpass API | Startup + semanal |
+| Perfil epidemiológico | PAHO / SIVIGILA (CSV) | Pre-cargado |
 | Población por zona | CEPAL / INEC Ecuador | Pre-cargado |
+| Zonas administrativas | INEC GeoJSON oficial | Seed estático |
+| Búsqueda web para agente | Tavily Search API | En demanda |
 | Demo histórico | El Niño 2023 Ecuador | Seed estático |
 
-Todas las fuentes son **públicas y gratuitas**. Sin API keys para el MVP.
+Fuentes públicas y gratuitas excepto **Tavily**, que requiere `TAVILY_API_KEY` y se usa solo desde el agente con cuota por turno.
 
 ---
 
 ## 8. Requisitos no funcionales
 
-- Latencia API: < 200ms por endpoint (datos pre-computados, no cálculo on-demand)
-- Pipeline: tolerante a fallos — si un run falla, el siguiente ciclo reintenta
-- CPU-bound steps del pipeline: `run_in_executor` para no bloquear el event loop de FastAPI
-- Configuración: todas las variables de entorno tipadas en `app/config.py` via pydantic-settings
-- Sin secrets en código — todas las credenciales por variables de entorno
+- Latencia API mapa: < 200ms por endpoint (datos pre-computados, no cálculo on-demand).
+- Pipeline tolerante a fallos: si un run falla, el siguiente ciclo reintenta.
+- Pasos CPU-bound del pipeline: `run_in_executor` para no bloquear el event loop.
+- Configuración tipada en `app/config.py` via pydantic-settings.
+- Verificación de JWT Clerk con caché de JWKS en memoria (TTL 1h).
+- Sin secrets en código.
 
 ---
 
@@ -208,8 +219,12 @@ Todas las fuentes son **públicas y gratuitas**. Sin API keys para el MVP.
 
 ## 10. Out of scope (MVP)
 
-- Roles de usuario y control de acceso por actor
-- Autenticación en el backend (Clerk se gestiona en el frontend)
-- Notificaciones push o email
-- Cobertura fuera de Ecuador
-- Interfaz de administración
+- Roles de usuario multi-actor (gobierno / logística / salud).
+- Notificaciones push / proactivas del agente.
+- Dashboards por actor (eliminados en el pivote).
+- Cálculo de rutas alternativas (OSRM eliminado).
+- Mapeo de epidemiología en el frontend (datos sólo como contexto interno del agente).
+- Mapeo de albergues / ONGs en el mapa (los resuelve el agente vía Tavily).
+- Persistencia del perfil del ciudadano en backend (vive en Clerk `unsafeMetadata`).
+- Cobertura fuera de Ecuador.
+- Interfaz de administración.

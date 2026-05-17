@@ -23,7 +23,6 @@ from app.integrations.osrm_client import get_route
 from app.models.alert import Alert
 from app.models.corridor import Corridor
 from app.models.municipality import Municipality
-from app.models.rerouting_plan import ReroutingPlan
 from app.models.risk_forecast import RiskForecast
 from app.models.risk_segment import RiskSegment
 
@@ -244,11 +243,8 @@ async def _seed(session: AsyncSession) -> None:
             await session.flush()
             seeded += 1
 
-        await _seed_rerouting_plan(session, corridor, record)
-
         if settings.DEMO_MODE:
             demo_corridor = await _seed_demo_corridor(session, corridor, record)
-            await _seed_rerouting_plan(session, demo_corridor, record)
             await _seed_historical_forecasts(session, demo_corridor, record, now)
             await _seed_historical_segments(session, demo_corridor, record, now)
 
@@ -313,38 +309,6 @@ def _route_wkt(route: dict) -> str:
     geom = shape(route["geometry"])
     simplified = geom.simplify(0.0015, preserve_topology=False)
     return simplified.wkt
-
-
-async def _seed_rerouting_plan(
-    session: AsyncSession,
-    corridor: Corridor,
-    record: dict[str, Any],
-) -> None:
-    existing = await session.execute(
-        select(ReroutingPlan).where(ReroutingPlan.corridor_id == corridor.id).limit(1)
-    )
-    if existing.scalar_one_or_none():
-        return
-
-    waypoints = record.get("reroute_waypoints") or []
-    if not waypoints:
-        return
-
-    route = await get_route(record["origin"], record["destination"], waypoints=waypoints)
-    if route is None:
-        log.warning("OSRM could not resolve rerouting plan for %s", record["name"])
-        return
-
-    session.add(
-        ReroutingPlan(
-            corridor_id=corridor.id,
-            geometry=WKTElement(_route_wkt(route), srid=4326),
-            distance_km=route["distance_km"],
-            duration_minutes=route["duration_minutes"],
-            via_description=record["reroute_via"],
-            computed_at=datetime.now(timezone.utc),
-        )
-    )
 
 
 async def _seed_historical_forecasts(

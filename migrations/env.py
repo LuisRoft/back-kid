@@ -8,7 +8,19 @@ import geoalchemy2  # noqa: F401 — registers PostGIS types with Alembic
 
 from app.config import settings
 from app.models.base import Base  # noqa: F401
-from app.models import Alert, Corridor, Municipality, PipelineRun, ReroutingPlan, RiskForecast  # noqa: F401
+from app.models import (  # noqa: F401
+    Alert,
+    Corridor,
+    Municipality,
+    PipelineRun,
+    Poi,
+    RealtimeLandslideEvent,
+    RealtimeRainSample,
+    RiskForecast,
+    RiskSegment,
+    Zone,
+    ZoneRiskForecast,
+)
 
 config = context.config
 
