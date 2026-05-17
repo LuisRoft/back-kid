@@ -60,8 +60,8 @@ Los built-in tools de Claude Code (Read, Write, Bash) se deshabilitan explícita
 
 ```python
 options=ClaudeAgentOptions(
-    mcp_servers={"kidbot": kidbot_server},
-    allowed_tools=["mcp__kidbot__*"],
+    mcp_servers={"hermes": hermes_server},
+    allowed_tools=["mcp__hermes__*"],
     tools=[],  # elimina Read, Write, Bash del contexto
     resume=session_id,
 )
