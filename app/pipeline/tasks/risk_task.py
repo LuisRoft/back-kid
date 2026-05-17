@@ -13,9 +13,10 @@ from shapely.ops import substring
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.repositories import AlertRepo, CorridorRepo, ForecastRepo, RiskSegmentRepo
+from app.db.repositories import AlertRepo, CorridorRepo, ForecastRepo, RiskSegmentRepo, SubscriberRepo
 from app.db.session import AsyncSessionLocal
 from app.integrations.open_meteo import aggregate_precipitation, get_precipitation_forecasts
+from app.integrations.twilio_client import send_sms
 from app.models.alert import Alert
 from app.models.risk_forecast import RiskForecast
 from app.models.risk_segment import RiskSegment
@@ -44,6 +45,7 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
     forecast_repo = ForecastRepo(session)
     alert_repo = AlertRepo(session)
     segment_repo = RiskSegmentRepo(session)
+    subscriber_repo = SubscriberRepo(session)
 
     corridors = await corridor_repo.list_all(is_demo=False)
     if not corridors:
@@ -85,6 +87,7 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
                 )
                 await alert_repo.insert(alert)
                 alerted += 1
+                await _notify_subscribers_sms(subscriber_repo, corridor.name, peak_prob, peak_horizon)
 
             await segment_repo.deactivate_by_corridor(corridor.id, is_demo=False)
             for result in segment_results:
@@ -176,6 +179,31 @@ async def _score_segments(
                 }
             )
     return results
+
+
+async def _notify_subscribers_sms(
+    repo: SubscriberRepo,
+    corridor_name: str,
+    probability: float,
+    horizon_hours: int,
+) -> None:
+    if not settings.TWILIO_ACCOUNT_SID:
+        return
+    subscribers = await repo.list_active()
+    if not subscribers:
+        return
+    prob_pct = round(probability * 100)
+    body = (
+        f"[NIMBUS ALERTA] {corridor_name}: "
+        f"{prob_pct}% prob. de cierre en {horizon_hours}h. "
+        f"Revisa el mapa en Nimbus."
+    )
+    for sub in subscribers:
+        try:
+            await send_sms(to=sub.phone, body=body)
+            log.info("SMS sent to %s for corridor %s", sub.phone, corridor_name)
+        except Exception:
+            log.exception("Failed to send SMS to %s", sub.phone)
 
 
 def _peak_probabilities(segment_results: list[dict]) -> dict[int, float]:

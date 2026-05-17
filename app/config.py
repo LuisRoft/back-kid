@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     KAPSO_API_KEY: str = ""
     KAPSO_PHONE_NUMBER_ID: str = ""
 
+    # Twilio — SMS alerts
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM: str = ""
+
     @property
     def async_database_url(self) -> str:
         """Ensures the DATABASE_URL uses the asyncpg driver.
