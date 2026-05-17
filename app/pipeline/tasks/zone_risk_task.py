@@ -10,6 +10,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.zone_repo import ZoneRepo
@@ -50,7 +51,7 @@ async def _run(session: AsyncSession) -> int:
         return 0
 
     now = datetime.now(timezone.utc)
-    fresh_cutoff = now - timedelta(hours=6)
+    fresh_cutoff = now - timedelta(hours=24)
     processed = 0
 
     for idx, zone in enumerate(zones):
@@ -69,6 +70,15 @@ async def _run(session: AsyncSession) -> int:
 
             try:
                 forecasts = await get_precipitation_forecasts(points)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429:
+                    log.warning(
+                        "Open-Meteo quota exhausted at zone %s — stopping this run, will retry next schedule",
+                        zone.code,
+                    )
+                    break
+                log.exception("Open-Meteo HTTP error for zone %s — skipping", zone.code)
+                continue
             except Exception:
                 log.exception("Open-Meteo failed for zone %s — skipping", zone.code)
                 continue

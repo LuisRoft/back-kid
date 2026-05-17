@@ -29,17 +29,20 @@ async def whatsapp_webhook(request: Request) -> dict:
     """Receives incoming WhatsApp messages from Kapso, queries Hermes IA, replies."""
     body = await request.json()
 
-    # Navigate Meta webhook payload structure
-    try:
-        changes = body["entry"][0]["changes"][0]["value"]
-        messages = changes.get("messages")
-        if not messages:
-            return {"status": "no_message"}
+    event_type = body.get("type")
 
-        msg = messages[0]
+    # Kapso sends delivery/read receipts back to the webhook (outbound status updates).
+    # These are not user messages — acknowledge and skip.
+    if event_type != "whatsapp.message.received":
+        return {"status": "ignored"}
+
+    try:
+        items = body.get("data") or []
+        if not items:
+            return {"status": "no_message"}
+        msg = items[0].get("message", {})
         if msg.get("type") != "text":
             return {"status": "ignored_non_text"}
-
         sender = msg["from"]
         text = msg["text"]["body"]
     except (KeyError, IndexError) as e:
@@ -56,5 +59,9 @@ async def whatsapp_webhook(request: Request) -> dict:
     # (get_agent_response doesn't return it yet — extend later if needed)
     _sessions.setdefault(sender, None)
 
-    await send_whatsapp_message(to=sender, body=reply)
+    try:
+        await send_whatsapp_message(to=sender, body=reply)
+    except Exception:
+        log.exception("Failed to send WhatsApp reply to %s", sender)
+        return {"status": "send_failed"}
     return {"status": "ok"}

@@ -53,7 +53,7 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
         return 0, 0
 
     now = datetime.now(timezone.utc)
-    fresh_cutoff = now - timedelta(hours=6)
+    fresh_cutoff = now - timedelta(hours=24)
     processed = 0
     alerted = 0
 

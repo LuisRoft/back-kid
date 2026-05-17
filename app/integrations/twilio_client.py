@@ -19,4 +19,4 @@ async def send_sms(to: str, body: str) -> None:
         )
         if not r.is_success:
             log.error("Twilio send failed %s: %s", r.status_code, r.text)
-        r.raise_for_status()
+            r.raise_for_status()
