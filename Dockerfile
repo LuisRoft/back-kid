@@ -13,10 +13,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY pyproject.toml ./
-RUN uv sync --no-dev
+# Lock + manifest first so dependency layer is cached unless they change.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev --frozen
 
+# Application code.
 COPY app/ ./app/
+
+# Static data needed at runtime: LHASA susceptibility raster (~32 MB) and
+# GeoJSON seeds (cantones, parroquias). Without these the pipeline runs in
+# degraded mode and the seed task no-ops.
+COPY data/ ./data/
+
+# Alembic migrations + config (allow running `uv run alembic upgrade head`
+# against the deployed image if ever needed).
+COPY migrations/ ./migrations/
+COPY alembic.ini ./
 
 EXPOSE 8000
 
