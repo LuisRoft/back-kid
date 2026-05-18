@@ -232,6 +232,10 @@ async def zones_geojson(
                 "horizon_hours": horizon,
                 "risk_level": level_name,
                 "risk_color": color,
+                # Breakdown — answers "why is this zone at this risk?"
+                "expected_rainfall_mm": forecast.expected_rainfall_mm if forecast else None,
+                "peak_susceptibility_class": forecast.peak_susceptibility_class if forecast else None,
+                "computed_at": forecast.computed_at.isoformat() if forecast else None,
             },
         })
 

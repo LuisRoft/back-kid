@@ -109,6 +109,12 @@ def _jwks_url() -> str:
     )
 
 
+def _jwt_issuer() -> str | None:
+    if not settings.CLERK_JWT_ISSUER:
+        return None
+    return settings.CLERK_JWT_ISSUER.rstrip("/")
+
+
 def _get_signing_key(jwks: dict[str, Any], kid: str | None):
     if not kid:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "JWT missing `kid` header")
@@ -133,7 +139,7 @@ async def verify_token(token: str) -> dict[str, Any]:
             token,
             key=signing_key,
             algorithms=["RS256"],
-            issuer=settings.CLERK_JWT_ISSUER or None,
+            issuer=_jwt_issuer(),
             options={"require": ["exp", "iat", "sub"]},
         )
     except jwt.ExpiredSignatureError as exc:

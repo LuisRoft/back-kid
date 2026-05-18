@@ -32,3 +32,7 @@ class ZoneRiskForecast(Base, TimestampMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Breakdown of what drove the probability — surfaced by /map/zones so the FE
+    # can show "why" this zone has its score (forecast rainfall + terrain class).
+    expected_rainfall_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    peak_susceptibility_class: Mapped[int | None] = mapped_column(Integer, nullable=True)

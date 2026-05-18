@@ -53,16 +53,30 @@ def sample_points_for_zone(geom_wkb, *, target_points: int = 6) -> list[tuple[fl
 def aggregate_zone_probabilities(
     sample_precipitation: list[tuple[float, float, float]],
     points: list[tuple[float, float]],
-) -> dict[int, float]:
-    """Peak (mm_24, mm_48, mm_72, susceptibility) → {horizon: probability}.
+) -> dict[int, dict]:
+    """Per-horizon aggregation across the zone's sampled points.
 
-    `sample_precipitation` is one (mm_24, mm_48, mm_72) tuple per point.
+    Returns: {
+        24: {"probability": float, "expected_rainfall_mm": float, "peak_susceptibility_class": int},
+        48: {...}, 72: {...}
+    }
+
+    For each horizon, picks the point with the highest computed probability and
+    surfaces its rainfall (mm in that horizon window) and the LHASA class at it.
     """
-    peaks: dict[int, float] = {24: 0.02, 48: 0.02, 72: 0.02}
+    best: dict[int, dict] = {
+        h: {"probability": 0.02, "expected_rainfall_mm": 0.0, "peak_susceptibility_class": 0}
+        for h in (24, 48, 72)
+    }
     for (lat, lon), (mm_24, mm_48, mm_72) in zip(points, sample_precipitation, strict=False):
         susceptibility = get_susceptibility(lat, lon)
         probs = compute_probabilities(mm_24, mm_48, mm_72, susceptibility_class=susceptibility)
-        for horizon, value in probs.items():
-            if value > peaks[horizon]:
-                peaks[horizon] = value
-    return peaks
+        per_horizon_mm = {24: mm_24, 48: mm_48, 72: mm_72}
+        for horizon, probability in probs.items():
+            if probability > best[horizon]["probability"]:
+                best[horizon] = {
+                    "probability": probability,
+                    "expected_rainfall_mm": round(per_horizon_mm[horizon], 2),
+                    "peak_susceptibility_class": susceptibility,
+                }
+    return best

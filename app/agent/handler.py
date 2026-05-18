@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock, query
 from fastapi import APIRouter, Depends
@@ -11,8 +12,10 @@ from app.agent import quota
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import hermes_server
 from app.auth.clerk import CurrentUser, get_current_user
+from app.config import settings
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+log = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -22,6 +25,10 @@ class ChatRequest(BaseModel):
 
 async def _stream(message: str, session_id: str | None, user: CurrentUser):
     system_prompt = build_system_prompt(user)
+    env = {}
+    if settings.ANTHROPIC_API_KEY:
+        env["ANTHROPIC_API_KEY"] = settings.ANTHROPIC_API_KEY
+
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         mcp_servers={"hermes": hermes_server},
@@ -29,22 +36,29 @@ async def _stream(message: str, session_id: str | None, user: CurrentUser):
         tools=[],
         resume=session_id,
         max_turns=10,
+        env=env,
     )
 
     quota_token = quota.bind_session(session_id or user.clerk_user_id)
     try:
-        async for msg in query(prompt=message, options=options):
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if isinstance(block, TextBlock) and block.text:
-                        yield f"data: {json.dumps({'type': 'text', 'text': block.text})}\n\n"
+        try:
+            async for msg in query(prompt=message, options=options):
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock) and block.text:
+                            yield f"data: {json.dumps({'type': 'text', 'text': block.text})}\n\n"
 
-            elif isinstance(msg, ResultMessage):
-                yield (
-                    f"data: {json.dumps({'type': 'done', 'session_id': msg.session_id, 'is_error': msg.is_error})}\n\n"
-                )
+                elif isinstance(msg, ResultMessage):
+                    yield (
+                        f"data: {json.dumps({'type': 'done', 'session_id': msg.session_id, 'is_error': msg.is_error})}\n\n"
+                    )
 
-        yield "data: [DONE]\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Hermes agent stream failed")
+            yield f"data: {json.dumps({'type': 'text', 'text': 'Hermes no pudo completar la respuesta en este momento. Intenta de nuevo en unos segundos.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'is_error': True, 'error': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
     finally:
         quota.unbind_session(quota_token)
 

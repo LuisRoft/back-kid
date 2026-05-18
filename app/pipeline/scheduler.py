@@ -17,10 +17,23 @@ def build_scheduler() -> AsyncIOScheduler:
     from app.pipeline.tasks.zone_risk_task import run_zone_risk_task
 
     scheduler = AsyncIOScheduler(timezone="UTC")
+    now = datetime.now(timezone.utc)
+
+    # When RUN_PIPELINE_ON_STARTUP=false we explicitly want NO automatic runs
+    # right after boot — push each job's first fire one full interval into the
+    # future so the developer can restart freely without burning quotas.
+    early_zone_offset = timedelta(minutes=3) if settings.RUN_PIPELINE_ON_STARTUP else timedelta(hours=settings.ZONE_RISK_INTERVAL_HOURS)
+    rain_offset       = timedelta(seconds=10) if settings.RUN_PIPELINE_ON_STARTUP else timedelta(minutes=settings.REALTIME_RAIN_INTERVAL_MINUTES)
+    lhasa_offset      = timedelta(seconds=10) if settings.RUN_PIPELINE_ON_STARTUP else timedelta(minutes=settings.LHASA_NRT_INTERVAL_MINUTES)
+    risk_offset       = timedelta(seconds=10) if settings.RUN_PIPELINE_ON_STARTUP else timedelta(minutes=settings.PIPELINE_INTERVAL_MINUTES)
+    pois_offset       = timedelta(seconds=10) if settings.RUN_PIPELINE_ON_STARTUP else timedelta(days=settings.POIS_REFRESH_INTERVAL_DAYS)
 
     scheduler.add_job(
         run_risk_pipeline,
-        IntervalTrigger(minutes=settings.PIPELINE_INTERVAL_MINUTES),
+        IntervalTrigger(
+            minutes=settings.PIPELINE_INTERVAL_MINUTES,
+            start_date=now + risk_offset,
+        ),
         id="risk_pipeline",
         replace_existing=True,
         max_instances=1,
@@ -35,7 +48,7 @@ def build_scheduler() -> AsyncIOScheduler:
         run_zone_risk_task,
         IntervalTrigger(
             hours=settings.ZONE_RISK_INTERVAL_HOURS,
-            start_date=datetime.now(timezone.utc) + timedelta(minutes=3),
+            start_date=now + early_zone_offset,
         ),
         id="zone_risk",
         replace_existing=True,
@@ -47,7 +60,10 @@ def build_scheduler() -> AsyncIOScheduler:
     # Realtime rain — current precipitation snapshot over national grid.
     scheduler.add_job(
         run_realtime_rain_task,
-        IntervalTrigger(minutes=settings.REALTIME_RAIN_INTERVAL_MINUTES),
+        IntervalTrigger(
+            minutes=settings.REALTIME_RAIN_INTERVAL_MINUTES,
+            start_date=now + rain_offset,
+        ),
         id="realtime_rain",
         replace_existing=True,
         max_instances=1,
@@ -58,7 +74,10 @@ def build_scheduler() -> AsyncIOScheduler:
     # LHASA NRT events — synthesized from rain + susceptibility for now.
     scheduler.add_job(
         run_lhasa_realtime_task,
-        IntervalTrigger(minutes=settings.LHASA_NRT_INTERVAL_MINUTES),
+        IntervalTrigger(
+            minutes=settings.LHASA_NRT_INTERVAL_MINUTES,
+            start_date=now + lhasa_offset,
+        ),
         id="lhasa_realtime",
         replace_existing=True,
         max_instances=1,
@@ -69,7 +88,10 @@ def build_scheduler() -> AsyncIOScheduler:
     # POIs from Overpass — weekly refresh.
     scheduler.add_job(
         run_pois_refresh_task,
-        IntervalTrigger(days=settings.POIS_REFRESH_INTERVAL_DAYS),
+        IntervalTrigger(
+            days=settings.POIS_REFRESH_INTERVAL_DAYS,
+            start_date=now + pois_offset,
+        ),
         id="pois_refresh",
         replace_existing=True,
         max_instances=1,

@@ -59,6 +59,20 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
             segment_results = await _score_corridor_segments(corridor)
             probs = _peak_probabilities(segment_results)
 
+            # If Open-Meteo failed for every segment of this corridor, all probs
+            # collapse to the 0.02 floor. Skip the corridor entirely so we DON'T
+            # deactivate the previous active segments/alerts — better to keep
+            # stale-but-real data than to wipe everything to nothing.
+            peak_horizon = max(probs, key=probs.__getitem__)
+            peak_prob = probs[peak_horizon]
+            if peak_prob <= 0.02:
+                log.warning(
+                    "Skipping corridor %s — all probs at floor (likely upstream API failure); "
+                    "preserving previous active segments/alerts.",
+                    corridor.name,
+                )
+                continue
+
             for horizon, prob in probs.items():
                 forecast = RiskForecast(
                     corridor_id=corridor.id,
@@ -71,8 +85,6 @@ async def _pipeline(session: AsyncSession) -> tuple[int, int]:
                 await forecast_repo.insert(forecast)
 
             # Alert if any horizon breaches threshold — surface the highest-risk one
-            peak_horizon = max(probs, key=probs.__getitem__)
-            peak_prob = probs[peak_horizon]
             await alert_repo.deactivate_by_corridor(corridor.id, is_demo=False)
             if peak_prob >= settings.RISK_THRESHOLD:
                 alert = Alert(

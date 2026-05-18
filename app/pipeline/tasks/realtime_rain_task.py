@@ -72,3 +72,10 @@ def _parse_time(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+if __name__ == "__main__":
+    # Allow running standalone: `uv run python -m app.pipeline.tasks.realtime_rain_task`
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO, format="%(levelname)-7s %(name)s — %(message)s")
+    asyncio.run(run_realtime_rain_task())

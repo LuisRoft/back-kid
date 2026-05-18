@@ -70,15 +70,17 @@ async def _run(session: AsyncSession) -> int:
                 continue
 
             sample_precipitation = [aggregate_precipitation(f) for f in forecasts]
-            peaks = aggregate_zone_probabilities(sample_precipitation, points)
+            breakdown = aggregate_zone_probabilities(sample_precipitation, points)
 
             await risk_repo.deactivate_by_zone(zone.id)
-            for horizon, probability in peaks.items():
+            for horizon, data in breakdown.items():
                 await risk_repo.insert(
                     ZoneRiskForecast(
                         zone_id=zone.id,
                         horizon_hours=horizon,
-                        probability=probability,
+                        probability=data["probability"],
+                        expected_rainfall_mm=data["expected_rainfall_mm"],
+                        peak_susceptibility_class=data["peak_susceptibility_class"],
                         computed_at=now,
                         valid_from=now + timedelta(hours=horizon - 24),
                         is_active=True,
@@ -91,3 +93,16 @@ async def _run(session: AsyncSession) -> int:
             continue
 
     return processed
+
+
+if __name__ == "__main__":
+    # Allow running standalone: `uv run python -m app.pipeline.tasks.zone_risk_task`
+    import logging as _logging
+    from app.pipeline.processors import susceptibility as _susc
+
+    _logging.basicConfig(level=_logging.INFO, format="%(levelname)-7s %(name)s — %(message)s")
+    try:
+        _susc.init(_susc.load_ecuador_raster())
+    except FileNotFoundError:
+        log.warning("LHASA susceptibility raster missing — running without weighting")
+    asyncio.run(run_zone_risk_task())
