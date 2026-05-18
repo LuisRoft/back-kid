@@ -10,6 +10,15 @@ class ZoneRiskRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def get_latest_by_zone(self, zone_id: uuid.UUID) -> ZoneRiskForecast | None:
+        result = await self.session.execute(
+            select(ZoneRiskForecast)
+            .where(ZoneRiskForecast.zone_id == zone_id)
+            .order_by(ZoneRiskForecast.computed_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def insert(self, forecast: ZoneRiskForecast) -> ZoneRiskForecast:
         self.session.add(forecast)
         await self.session.flush()

@@ -10,6 +10,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.zone_repo import ZoneRepo
@@ -50,21 +51,34 @@ async def _run(session: AsyncSession) -> int:
         return 0
 
     now = datetime.now(timezone.utc)
+    fresh_cutoff = now - timedelta(hours=24)
     processed = 0
 
     for idx, zone in enumerate(zones):
-        # Stay well under Open-Meteo's 600 req/min cap when running ~221 cantons
-        # back-to-back: ~150ms between zones keeps us at ~400 req/min worst case.
         if idx > 0:
             await asyncio.sleep(0.15)
 
         try:
+            latest = await risk_repo.get_latest_by_zone(zone.id)
+            if latest and latest.computed_at >= fresh_cutoff:
+                processed += 1
+                continue
+
             points = sample_points_for_zone(zone.geometry)
             if not points:
                 continue
 
             try:
                 forecasts = await get_precipitation_forecasts(points)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429:
+                    log.warning(
+                        "Open-Meteo quota exhausted at zone %s — stopping this run, will retry next schedule",
+                        zone.code,
+                    )
+                    break
+                log.exception("Open-Meteo HTTP error for zone %s — skipping", zone.code)
+                continue
             except Exception:
                 log.exception("Open-Meteo failed for zone %s — skipping", zone.code)
                 continue
