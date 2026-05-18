@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.agent import quota
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import hermes_server
-from app.auth.clerk import CurrentUser, get_current_user
+from app.auth.clerk import CurrentUser, get_optional_user
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -20,7 +20,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
-async def _stream(message: str, session_id: str | None, user: CurrentUser):
+async def _stream(message: str, session_id: str | None, user: CurrentUser | None):
     system_prompt = build_system_prompt(user)
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
@@ -31,7 +31,8 @@ async def _stream(message: str, session_id: str | None, user: CurrentUser):
         max_turns=10,
     )
 
-    quota_token = quota.bind_session(session_id or user.clerk_user_id)
+    session_key = session_id or (user.clerk_user_id if user else "anonymous")
+    quota_token = quota.bind_session(session_key)
     try:
         async for msg in query(prompt=message, options=options):
             if isinstance(msg, AssistantMessage):
@@ -74,7 +75,7 @@ async def get_agent_response(message: str, session_id: str | None = None) -> str
 @router.post("/chat")
 async def chat(
     request: ChatRequest,
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser | None = Depends(get_optional_user),
 ) -> StreamingResponse:
     return StreamingResponse(
         _stream(request.message, request.session_id, user),
