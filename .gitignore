@@ -43,6 +43,8 @@ archive.zip
 # Data files — large binaries, downloaded separately
 data/cache/
 data/*.tif
+# Exception: ship the LHASA susceptibility raster (32 MB) so production has it.
+!data/susceptibility_global.tif
 
 # Python
 .venv/
